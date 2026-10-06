@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPPAT - Sistem Peminjaman & Pengembalian Alat Ruangan</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
+header{background:#0b5cab;color:#fff;padding:22px 28px}
+header h1{margin:0;font-size:25px} header p{margin:7px 0 0;opacity:.9}
+.wrap{max-width:1200px;margin:24px auto;padding:0 18px}
+.card{background:#fff;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 3px 14px #00000012}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+label{font-weight:700;font-size:13px;display:block;margin-bottom:6px}
+input,select,textarea{width:100%;padding:11px;border:1px solid #ccd5e0;border-radius:8px;font-size:14px}
+button{border:0;border-radius:8px;padding:11px 15px;font-weight:700;cursor:pointer;margin:4px}
+.primary{background:#0b5cab;color:white}.green{background:#198754;color:#fff}.orange{background:#f59e0b;color:#fff}.gray{background:#64748b;color:#fff}.danger{background:#dc3545;color:#fff}
+.actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:15px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #dce2ea;padding:9px;text-align:left}th{background:#eef4fa}
+.badge{padding:4px 8px;border-radius:20px;font-size:11px;font-weight:700}.borrow{background:#fff3cd;color:#805b00}.return{background:#d1e7dd;color:#0f5132}
+.notice{background:#e8f3ff;border-left:4px solid #0b5cab;padding:12px;margin-bottom:15px;font-size:13px}
+#qr{display:inline-block;padding:10px;background:#fff}.standing{display:flex;gap:35px;align-items:center;justify-content:center;text-align:center}
+.standing h2{font-size:28px;margin:0 0 8px}.standing p{margin:5px}
+.modal{display:none;position:fixed;inset:0;background:#0008;align-items:center;justify-content:center;z-index:10}
+.modalbox{background:#fff;width:min(600px,92%);padding:22px;border-radius:14px}
+@media(max-width:750px){.grid{grid-template-columns:1fr}.standing{flex-direction:column}}
+@media print{body>*{display:none!important}#printArea{display:block!important}.printcard{padding:30px;text-align:center}}
+#printArea{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>SPPAT — Peminjaman & Pengembalian Alat Ruang Asoka Jingga — Ruang Asoka Jingga</h1>
+  <p>Digitalisasi pencatatan peminjaman dan pengembalian alat di Ruang Asoka Jingga</p>
+</header>
+
+<div class="wrap">
+  <div class="notice">
+    <b>Alur:</b> scan  → isi data peminjaman → data tersimpan → saat alat kembali, cari transaksi lalu klik <b>Pengembalian</b>.
+  </div>
+
+  <div class="card">
+    <h2>Form Peminjaman Alat</h2>
+    <div class="grid">
+      <div><label>Nama Peminjam *</label><input id="nama" placeholder="Nama lengkap"></div>
+      <div><label>NIP/NIK/Identitas</label><input id="identitas" placeholder="Opsional"></div>
+      <div><label>Ruangan Asal *</label><input id="ruangAsal" placeholder="Contoh: Ruang Asoka"></div>
+      <div><label>Ruangan Tujuan / Penggunaan</label><input id="ruangTujuan" placeholder="Contoh: Ruang Jingga"></div>
+      <div><label>Nama Alat *</label><input id="alat" placeholder="Contoh: Infusion Pump"></div>
+      <div><label>Jumlah *</label><input id="jumlah" type="number" min="1" value="1"></div>
+      <div><label>Kondisi Saat Dipinjam</label><select id="kondisiPinjam"><option>Baik</option><option>Baik dengan catatan</option><option>Rusak ringan</option></select></div>
+      <div><label>Keperluan</label><input id="keperluan" placeholder="Contoh: Perawatan pasien"></div>
+    </div>
+    <div class="actions">
+      <button class="primary" onclick="simpan()">Simpan Peminjaman</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Database Peminjaman & Pengembalian</h2>
+    <div class="actions">
+      <input id="cari" placeholder="Cari nama / ruangan / alat / ID transaksi..." oninput="render()" style="max-width:420px">
+      <select id="filter" onchange="render()" style="max-width:220px">
+        <option value="">Semua Status</option><option>Dipinjam</option><option>Dikembalikan</option>
+      </select>
+    </div>
+    <div style="overflow:auto;margin-top:12px">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>Nama Peminjam</th><th>Ruangan</th><th>Alat</th><th>Jumlah</th>
+          <th>Tgl/Jam Pinjam</th><th>Tgl/Jam Kembali</th><th>Status</th><th>Aksi</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="printArea"></div>
+
+<div class="modal" id="returnModal">
+  <div class="modalbox">
+    <h2>Pengembalian Alat</h2>
+    <input type="hidden" id="returnId">
+    <label>Kondisi Saat Dikembalikan</label>
+    <select id="kondisiKembali"><option>Baik</option><option>Baik dengan catatan</option><option>Rusak ringan</option><option>Rusak berat</option><option>Hilang</option></select>
+    <label style="margin-top:12px">Nama Petugas Penerima</label>
+    <input id="petugas" placeholder="Nama petugas">
+    <label style="margin-top:12px">Catatan</label>
+    <textarea id="catatan" placeholder="Keterangan kerusakan/kekurangan, jika ada"></textarea>
+    <div class="actions">
+      <button class="green" onclick="prosesKembali()">Simpan Pengembalian</button>
+      <button class="gray" onclick="tutupModal()">Batal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+  Google Sheets sebagai database.
+  Sheet ID diambil dari URL yang Anda berikan.
+  Agar browser bisa MENULIS ke Google Sheet, deploy Apps Script pendamping
+  sebagai Web App lalu isi SHEET_API_URL dengan URL Web App tersebut.
+*/
+const SHEET_ID = '1SC8q-3zfnMnLmDGy8EokLkI-72n_JvL4EW2ZbkUqLQk';
+const SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbxu-vbkHtVb2zLSiEe80c2d5Ha_KbbOa2i4_KOG8EXxtQJsfOMhALg3d5Yf0sJZGRr5Lg/exec';
+const SHEET_NAME = 'Peminjaman Alat';
+
+let data = [];
+
+function idBaru(){
+  return 'SPPAT-'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'-'+Math.floor(Math.random()*900+100);
+}
+function now(){
+  return new Date().toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'});
+}
+
+async function api(action, payload={}){
+  if(!SHEET_API_URL || SHEET_API_URL.includes('PASTE_GOOGLE_APPS_SCRIPT')){
+    throw new Error('URL Google Apps Script belum diisi.');
+  }
+  const res = await fetch(SHEET_API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action, sheetId:SHEET_ID, sheetName:SHEET_NAME, ...payload})
+  });
+  const json = await res.json();
+  if(!json.ok) throw new Error(json.error || 'Gagal mengakses Google Sheet.');
+  return json;
+}
+
+async function loadData(){
+  try{
+    const result = await api('list');
+    data = result.data || [];
+    render();
+  }catch(err){
+    console.error(err);
+    data = JSON.parse(localStorage.getItem('sppat_data') || '[]');
+    render();
+    if(SHEET_API_URL.includes('PASTE_GOOGLE_APPS_SCRIPT')){
+    }else{
+      console.error('Gagal memuat Google Sheet:', err);
+    }
+  }
+}
+
+async function simpan(){
+  const nama=document.getElementById('nama').value.trim();
+  const alat=document.getElementById('alat').value.trim();
+  const ruangAsal=document.getElementById('ruangAsal').value.trim();
+
+  if(!nama||!alat||!ruangAsal){
+    alert('Nama peminjam, ruangan asal, dan nama alat wajib diisi.');
+    return;
+  }
+
+  const record = {
+    id:idBaru(),
+    nama,
+    identitas:document.getElementById('identitas').value,
+    ruangAsal,
+    ruangTujuan:document.getElementById('ruangTujuan').value,
+    alat,
+    jumlah:Number(document.getElementById('jumlah').value||1),
+    keperluan:document.getElementById('keperluan').value,
+    kondisiPinjam:document.getElementById('kondisiPinjam').value,
+    tglPinjam:now(),
+    tglKembali:'',
+    kondisiKembali:'',
+    petugas:'',
+    catatan:'',
+    status:'Dipinjam'
+  };
+
+  try{
+    await api('create',{record});
+    data.unshift(record);
+    render();
+    alert('Peminjaman berhasil disimpan ke Google Sheet.');
+    ['nama','identitas','ruangAsal','ruangTujuan','alat','keperluan']
+      .forEach(x=>document.getElementById(x).value='');
+    document.getElementById('jumlah').value=1;
+  }catch(err){
+    // Fallback hanya agar data tidak hilang jika koneksi belum siap.
+    data.unshift(record);
+    localStorage.setItem('sppat_data',JSON.stringify(data));
+    render();
+    alert('Data disimpan sementara di browser. Google Sheet belum terhubung: '+err.message);
+  }
+}
+
+function render(){
+  const q=document.getElementById('cari').value.toLowerCase();
+  const f=document.getElementById('filter').value;
+  const rows=data.filter(x=>(!f||x.status===f)&&JSON.stringify(x).toLowerCase().includes(q));
+
+  document.getElementById('tbody').innerHTML=rows.map(x=>`
+  <tr>
+    <td>${esc(x.id)}</td>
+    <td>${esc(x.nama)}</td>
+    <td>${esc(x.ruangAsal)}${x.ruangTujuan?' → '+esc(x.ruangTujuan):''}</td>
+    <td>${esc(x.alat)}</td>
+    <td>${esc(x.jumlah)}</td>
+    <td>${esc(x.tglPinjam)}</td>
+    <td>${esc(x.tglKembali||'-')}</td>
+    <td><span class="badge ${x.status==='Dipinjam'?'borrow':'return'}">${esc(x.status)}</span></td>
+    <td>${x.status==='Dipinjam'
+      ? `<button class="green" onclick="bukaKembali('${escAttr(x.id)}')">Pengembalian</button>`
+      : `<button class="gray" onclick="detail('${escAttr(x.id)}')">Lihat</button>`}</td>
+  </tr>`).join('') || '<tr><td colspan="9" style="text-align:center">Belum ada data</td></tr>';
+}
+
+function esc(v){
+  return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+function escAttr(v){ return String(v??'').replace(/'/g,"\\'"); }
+
+function bukaKembali(id){
+  document.getElementById('returnId').value=id;
+  document.getElementById('returnModal').style.display='flex';
+}
+function tutupModal(){document.getElementById('returnModal').style.display='none';}
+
+async function prosesKembali(){
+  const id=document.getElementById('returnId').value;
+  const x=data.find(a=>a.id===id);
+  if(!x)return;
+
+  const update = {
+    tglKembali:now(),
+    kondisiKembali:document.getElementById('kondisiKembali').value,
+    petugas:document.getElementById('petugas').value,
+    catatan:document.getElementById('catatan').value,
+    status:'Dikembalikan'
+  };
+
+  try{
+    await api('update',{id, update});
+    Object.assign(x,update);
+    render();
+    tutupModal();
+    alert('Pengembalian berhasil dicatat ke Google Sheet.');
+  }catch(err){
+    alert('Pengembalian belum tersimpan ke Google Sheet: '+err.message);
+  }
+}
+
+function detail(id){
+  const x=data.find(a=>a.id===id);
+  if(!x)return;
+  alert(`ID: ${x.id}
+Peminjam: ${x.nama}
+Alat: ${x.alat}
+Jumlah: ${x.jumlah}
+Pinjam: ${x.tglPinjam}
+Kembali: ${x.tglKembali}
+Kondisi kembali: ${x.kondisiKembali}
+Petugas: ${x.petugas}
+Catatan: ${x.catatan}`);
+}
+
+loadData();
+</script>
+</body>
+</html>
